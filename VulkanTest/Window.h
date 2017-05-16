@@ -1,5 +1,8 @@
 #pragma once
 #include "Platform.h"
+#include "Scene.h"
+#include "Pipeline.h"
+
 #include <stdint.h>
 #include <string>
 #include <vector>
@@ -26,7 +29,10 @@ private:
 
 	std::vector<VkImage> m_Images;
 	std::vector<VkImageView> m_ImageViews;
-	std::vector<VkFramebuffer> m_Framebuffers;
+	std::vector<VkFramebuffer> m_Framebuffers; 
+	std::vector<Pipeline*> m_Pipelines;
+	std::vector<VkCommandBuffer> m_RenderCommandBuffers;
+	std::vector<VkSemaphore> m_RenderComplete;
 
 	VkImage	m_DepthStencilImage = VK_NULL_HANDLE;
 	VkDeviceMemory m_DepthStencilMemory= VK_NULL_HANDLE;
@@ -81,6 +87,9 @@ private:
 	void InitSyncronizations();
 	void DestroySyncronizations();
 
+	void CreatePipelines();
+	void DestroyPipelines();
+
 public:
 	Window(Renderer* _renderer, uint32_t width, uint32_t height, char* name);
 	~Window();
@@ -89,10 +98,16 @@ public:
 	bool Update();
 
 	void BeginRender();
-	void EndRender();
+	void EndRender( std::vector<VkSemaphore> wait_semaphores );
+
+	void RenderScene(const Scene * scene, bool force_recalculate);
+	const std::vector<Pipeline*>& GetPipelines();
 
 	VkRenderPass GetVulkanRenderPass();
 	VkFramebuffer GetVulkanActiveFramebuffer();
 	VkExtent2D GetVulkanSurfaceSize();
+	uint32_t GetCurrentFrameBufferIndex();
+	std::vector<VkFramebuffer> GetVulkanFramebuffers();
+	void Render(const std::vector<VkCommandBuffer>& command_buffers);
 };
 

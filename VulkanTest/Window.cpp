@@ -22,6 +22,7 @@ Window::Window(Renderer* _renderer, uint32_t width, uint32_t height, char* name)
 
 Window::~Window()
 {
+	vkQueueWaitIdle(m_Renderer->GetVulkanQueue());
 	DestroySyncronizations();
 	DestroyFramebuffers();
 	DestroyRenderPass();
@@ -52,15 +53,15 @@ void Window::BeginRender()
 	ErrorCheck(vkQueueWaitIdle(m_Renderer->GetVulkanQueue()));
 }
 
-void Window::EndRender()
+void Window::EndRender(std::vector<VkSemaphore> wait_semaphores)
 {
-	VkResult presentResult = VkResult::VK_RESULT_MAX_ENUM;
+	VkResult presentResult = VkResult::VK_SUCCESS;// VkResult::VK_RESULT_MAX_ENUM;
 
 	VkPresentInfoKHR presentInfo{};
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 	//presentInfo.pNext;
-	presentInfo.waitSemaphoreCount = 0;
-	presentInfo.pWaitSemaphores = nullptr;
+	presentInfo.waitSemaphoreCount = wait_semaphores.size();
+	presentInfo.pWaitSemaphores = wait_semaphores.data();
 	presentInfo.swapchainCount = 1;
 	presentInfo.pSwapchains = &m_Swapchain;
 	presentInfo.pImageIndices = &m_ActiveSwapchainImageId;
@@ -85,6 +86,150 @@ VkFramebuffer Window::GetVulkanActiveFramebuffer()
 VkExtent2D Window::GetVulkanSurfaceSize()
 {
 	return{m_Width, m_Height};
+}
+
+uint32_t Window::GetCurrentFrameBufferIndex()
+{
+	return m_ActiveSwapchainImageId;
+}
+
+std::vector<VkFramebuffer> Window::GetVulkanFramebuffers()
+{
+	return m_Framebuffers;
+}
+
+void Window::Render(const std::vector<VkCommandBuffer> & command_buffers)
+{
+	// Trying 2 pipeline barriers inside one command buffer
+	// This seems to work pretty well on my system
+	VkCommandBufferBeginInfo command_buffer_begin_info{};
+	command_buffer_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	command_buffer_begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	ErrorCheck(vkBeginCommandBuffer(_render_command_buffers[_current_swapchain_image], &command_buffer_begin_info));
+
+	{
+		// memory barrier to transfer image from presentable to writeable
+		VkImageMemoryBarrier image_barrier{};
+		image_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		image_barrier.image = m_Images[_current_swapchain_image];
+		image_barrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		image_barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		image_barrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+		image_barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;// VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+		image_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		image_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		image_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		image_barrier.subresourceRange.layerCount = 1;
+		image_barrier.subresourceRange.levelCount = 1;
+		image_barrier.subresourceRange.baseArrayLayer = 0;
+		image_barrier.subresourceRange.baseMipLevel = 0;
+
+		vkCmdPipelineBarrier(
+			_render_command_buffers[_current_swapchain_image],
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &image_barrier);
+	}
+
+	VkRect2D render_area;
+	render_area.offset.x = 0;
+	render_area.offset.y = 0;
+	render_area.extent = {m_Width, m_Height};
+
+	VkClearValue clear_values[2];
+	clear_values[0].depthStencil.depth = 1.0f;
+	clear_values[0].depthStencil.stencil = 0;
+	clear_values[1].color.float32[0] = 0.10f;
+	clear_values[1].color.float32[1] = 0.15f;
+	clear_values[1].color.float32[2] = 0.20f;
+	clear_values[1].color.float32[3] = 1.0f;
+
+	VkRenderPassBeginInfo begin_info{};
+	begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	begin_info.renderPass = _render_pass;
+	begin_info.framebuffer = _framebuffers[_current_swapchain_image];
+	begin_info.renderArea = render_area;
+	begin_info.clearValueCount = 2;
+	begin_info.pClearValues = clear_values;
+	vkCmdBeginRenderPass(_render_command_buffers[_current_swapchain_image], &begin_info, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS);
+	// objects render here
+
+	vkCmdExecuteCommands(_render_command_buffers[_current_swapchain_image], command_buffers.size(), command_buffers.data());
+	vkCmdEndRenderPass(_render_command_buffers[_current_swapchain_image]);
+
+	{
+		// memory barrier to transfer image from writeable to presentable
+		VkImageMemoryBarrier image_barrier{};
+		image_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		image_barrier.image = _swapchain_images[_current_swapchain_image];
+		image_barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		image_barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		image_barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;// VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+		image_barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+		image_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		image_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		image_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		image_barrier.subresourceRange.layerCount = 1;
+		image_barrier.subresourceRange.levelCount = 1;
+		image_barrier.subresourceRange.baseArrayLayer = 0;
+		image_barrier.subresourceRange.baseMipLevel = 0;
+
+		vkCmdPipelineBarrier(
+			_render_command_buffers[_current_swapchain_image],
+			VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+			VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &image_barrier);
+	}
+
+	ErrorCheck(vkEndCommandBuffer(_render_command_buffers[_current_swapchain_image]));
+
+	VkPipelineStageFlags stage_flags[]{ VK_PIPELINE_STAGE_ALL_COMMANDS_BIT };
+	VkSubmitInfo submit_info{};
+	submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submit_info.commandBufferCount = 1;
+	submit_info.pCommandBuffers = &_render_command_buffers[_current_swapchain_image];
+	submit_info.waitSemaphoreCount = 1;
+	submit_info.pWaitSemaphores = &_present_image_available;
+	submit_info.pWaitDstStageMask = stage_flags;
+	submit_info.signalSemaphoreCount = 1;
+	submit_info.pSignalSemaphores = &_render_complete[_current_swapchain_image];
+
+	ErrorCheck(vkQueueSubmit(_queue, 1, &submit_info, VK_NULL_HANDLE));
+
+	VkPresentInfoKHR present_info{};
+	present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	present_info.swapchainCount = 1;
+	present_info.pSwapchains = &_swapchain;
+	present_info.pImageIndices = &_current_swapchain_image;
+	present_info.waitSemaphoreCount = 1;
+	present_info.pWaitSemaphores = &_render_complete[_current_swapchain_image];
+	ErrorCheck(vkQueuePresentKHR(_queue, &present_info));
+
+	ErrorCheck(vkAcquireNextImageKHR(_device, _swapchain, UINT64_MAX, _present_image_available, VK_NULL_HANDLE, &_current_swapchain_image));
+
+	// really simple syncronization, replace with something more sophisticated later
+	vkQueueWaitIdle(_queue);
+}
+
+void Window::RenderScene(const Scene * scene, bool force_recalculate)
+{
+	std::vector<VkCommandBuffer> render_command_buffers;
+
+	// do a recursive search on the scene and find all objects
+	scene->CollectCommandBuffers_Recursive(render_command_buffers);
+	Render(render_command_buffers);
+}
+
+const std::vector<Pipeline*> & Window::GetPipelines()
+{
+	return ;
 }
 
 void Window::InitSurface()
@@ -422,4 +567,21 @@ void Window::InitSyncronizations()
 void Window::DestroySyncronizations()
 {
 	vkDestroyFence(m_Renderer->GetVulkanDevice(), m_SwapchainImageAvailable, nullptr);
+}
+
+void Window::CreatePipelines()
+{
+	auto pipeline_names = m_Renderer->GetPipelineNames();
+	for (auto n : pipeline_names) {
+		Pipeline* pipe = new Pipeline(m_Renderer, this, n);
+		m_Pipelines.push_back(pipe);
+	}
+}
+
+void Window::DestroyPipelines()
+{
+	for (auto pipe : m_Pipelines) {
+		delete pipe;
+	}
+	m_Pipelines.clear();
 }

@@ -77,6 +77,10 @@ void ErrorCheckFull(VkResult result, char* File, int Line)
 	}
 }
 
+#else
+void ErrorCheckFull(VkResult result, char* File, int Line) {};
+#endif
+
 uint32_t FindMemoryTypeIndex(const VkPhysicalDeviceMemoryProperties * gpuMemoryProperties, const VkMemoryRequirements * memoryRequirements, const VkMemoryPropertyFlags requiredProperties)
 {
 	for (uint32_t i = 0; i < gpuMemoryProperties->memoryTypeCount; ++i) {
@@ -89,7 +93,3 @@ uint32_t FindMemoryTypeIndex(const VkPhysicalDeviceMemoryProperties * gpuMemoryP
 	assert(0 && "Couldn't find proper memory type.");
 	return UINT32_MAX;
 }
-
-#else
-void ErrorCheckFull(VkResult result, char* File, int Line) {};
-#endif

@@ -24,6 +24,8 @@ private:
 
 	Window* m_Window = nullptr;
 
+	std::vector<std::string> m_PipelineNames;
+
 	std::vector<const char*> m_InstanceLayers;
 	std::vector<const char*> m_InstanceExtensions;
 
@@ -32,7 +34,7 @@ private:
 	VkDebugReportCallbackCreateInfoEXT m_DebugReportCallbackCreateInfo = {};
 
 public:
-	Renderer();
+	Renderer(const std::vector<std::string> & used_pipeline_names);
 	~Renderer();
 
 	Window* InitWindow(uint32_t width, uint32_t height, char* name);
@@ -45,6 +47,8 @@ public:
 	const uint32_t GetVulkanGraphicsQueueFamilyIndex() const;
 	const VkPhysicalDeviceProperties& GetVulkanPhysicalDeviceProperties() const;
 	const VkPhysicalDeviceMemoryProperties& GetVulkanPhysicalDeviceMemoryProperties() const;
+
+	const std::vector<std::string>& GetPipelineNames();
 
 private:
 	void SetupLayersAndExtensions();

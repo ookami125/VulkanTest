@@ -1,8 +1,10 @@
 #include "Renderer.h"
 #include "Window.h"
 
-Renderer::Renderer()
+Renderer::Renderer(const std::vector<std::string> & used_pipeline_names)
 {
+	m_PipelineNames = used_pipeline_names;
+
 	SetupLayersAndExtensions();
 	SetupDebug();
 	InitInstance();
@@ -66,6 +68,11 @@ const VkPhysicalDeviceProperties & Renderer::GetVulkanPhysicalDeviceProperties()
 const VkPhysicalDeviceMemoryProperties & Renderer::GetVulkanPhysicalDeviceMemoryProperties() const
 {
 	return m_GPUMemoryProperties;
+}
+
+const std::vector<std::string> & Renderer::GetPipelineNames()
+{
+	return m_PipelineNames;
 }
 
 void Renderer::SetupLayersAndExtensions()
@@ -237,16 +244,16 @@ void Renderer::SetupDebug()
 		VK_DEBUG_REPORT_DEBUG_BIT_EXT |
 		VK_DEBUG_REPORT_ERROR_BIT_EXT |
 		0;
-	//m_InstanceLayers.push_back("VK_LAYER_LUNARG_standard_validation");
+	m_InstanceLayers.push_back("VK_LAYER_LUNARG_standard_validation");
 	//m_InstanceLayers.push_back("VK_LAYER_GOOGLE_threading");
 	//m_InstanceLayers.push_back("VK_LAYER_LUNARG_parameter_validation");
 	//m_InstanceLayers.push_back("VK_LAYER_LUNARG_swapchain");
 	//m_InstanceLayers.push_back("VK_LAYER_LUNARG_api_dump");
-	m_InstanceLayers.push_back("VK_LAYER_LUNARG_core_validation");
+	//m_InstanceLayers.push_back("VK_LAYER_LUNARG_core_validation");
 	//m_InstanceLayers.push_back("VK_LAYER_LUNARG_monitor");
 	//m_InstanceLayers.push_back("VK_LAYER_LUNARG_object_tracker");
 	//m_InstanceLayers.push_back("VK_LAYER_LUNARG_screenshot");
-	m_InstanceLayers.push_back("VK_LAYER_GOOGLE_unique_objects");
+	//m_InstanceLayers.push_back("VK_LAYER_GOOGLE_unique_objects");
 
 	//m_InstanceLayers.push_back("VK_LAYER_RENDERDOC_Capture");
 
